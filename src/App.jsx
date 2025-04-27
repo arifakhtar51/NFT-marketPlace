@@ -15,7 +15,13 @@ export default function App() {
   const [walletAddress, setWalletAddress] = useState(null);
   const [showMintPage, setShowMintPage] = useState(false);
   const [activePage, setActivePage] = useState("gallery");
-  const [selectedNetwork, setSelectedNetwork] = useState(SUPPORTED_NETWORKS[1]); // Default to Sepolia
+  const [selectedNetwork, setSelectedNetwork] = useState({
+    name: 'Flare Testnet Coston2',
+    symbol: 'C2FLR',
+    chainId: '0x72',
+    rpcUrls: ['https://coston2-api.flare.network/ext/bc/C/rpc'],
+    blockExplorerUrls: ['https://coston2-explorer.flare.network']
+  }); // Initialize with Flare network
 
   const YOUR_RECEIVER_WALLET = import.meta.env.VITE_RECEIVER_WALLET;
   const TRON_RECEIVER = import.meta.env.VITE_TRON_ADDRESS;
@@ -64,60 +70,111 @@ export default function App() {
     }
 
     try {
-      // Switching to Amoy
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: FLARE_COSTON2_CHAIN_ID }],
-      });
-    } catch (switchError) {
-      // If not added, try to add Amoy
-      if (switchError.code === 4902) {
-        try {
-          await window.ethereum.request({
-            method: "wallet_addEthereumChain",
-            params: [{
-              chainId: FLARE_COSTON2_CHAIN_ID,
-              chainName: "Flare Testnet Coston2",
-              rpcUrls: ["https://coston2-api.flare.network/ext/bc/C/rpc"],
-              nativeCurrency: {
-                name: "Coston2",
-                symbol: "C2FLR",
-                decimals: 18,
-              },
-              blockExplorerUrls: ["https://coston2-explorer.flare.network"],
-            }],
-          });
-        } catch (addError) {
-          console.error("Failed to add Flare Testnet Coston2:", addError);
-          toast.error("Failed to add Flare Testnet Coston2 network.");
-          return;
-        }
-      } else {
-        console.error("Failed to switch to Flare Testnet Coston2:", switchError);
-        toast.error("Failed to switch network.");
-        return;
-      }
-    }
-
-    // Connect wallet
-    try {
+      // Connect wallet first
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       const address = accounts[0];
       setWalletAddress(address);
       toast.success(`Connected: ${address.slice(0, 6)}...${address.slice(-4)}`);
+
+      // Get current network after connection
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      const currentChainId = `0x${network.chainId.toString(16)}`;
+
+      // Set the current network as selected
+      const currentNetwork = Object.values(SUPPORTED_NETWORKS).find(
+        net => net.chainId === currentChainId
+      );
+      if (currentNetwork) {
+        setSelectedNetwork(currentNetwork);
+      }
     } catch (err) {
       console.error("Wallet connection failed:", err);
       toast.error("Wallet connection failed.");
     }
   };
 
+  // Listen for account changes
+  useEffect(() => {
+    if (window.ethereum) {
+      const handleAccountsChanged = (accounts) => {
+        if (accounts.length === 0) {
+          setWalletAddress(null);
+          toast.success("🔌 Wallet Disconnected");
+        } else {
+          setWalletAddress(accounts[0]);
+          toast.success(`Connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
+        }
+      };
+
+      const handleChainChanged = async () => {
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const network = await provider.getNetwork();
+          const currentChainId = `0x${network.chainId.toString(16)}`;
+          
+          const currentNetwork = Object.values(SUPPORTED_NETWORKS).find(
+            net => net.chainId === currentChainId
+          );
+          if (currentNetwork) {
+            setSelectedNetwork(currentNetwork);
+          }
+        } catch (err) {
+          console.error("Error handling chain change:", err);
+        }
+      };
+
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+
+      return () => {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+      };
+    }
+  }, []);
+
+  // Initialize network on component mount
+  useEffect(() => {
+    const initializeNetwork = async () => {
+      if (!window.ethereum) return;
+
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const network = await provider.getNetwork();
+        const currentChainId = `0x${network.chainId.toString(16)}`;
+        
+        // Find matching network from SUPPORTED_NETWORKS
+        const currentNetwork = Object.values(SUPPORTED_NETWORKS).find(
+          net => net.chainId === currentChainId
+        );
+        
+        if (currentNetwork) {
+          setSelectedNetwork(currentNetwork);
+        }
+      } catch (err) {
+        console.error("Error initializing network:", err);
+      }
+    };
+
+    initializeNetwork();
+  }, []);
+
   const handleNetworkChange = async (network) => {
+    if (!network || !network.chainId) {
+      toast.error("Invalid network configuration");
+      return;
+    }
+
     try {
       // Try to switch to the selected network
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: network.chainId }],
       });
+
+      // Update selected network after successful switch
+      setSelectedNetwork(network);
     } catch (switchError) {
       // This error code indicates that the chain has not been added to MetaMask
       if (switchError.code === 4902) {
@@ -136,63 +193,49 @@ export default function App() {
               blockExplorerUrls: network.blockExplorerUrls
             }],
           });
+          
+          // Update selected network after successful addition
+          setSelectedNetwork(network);
         } catch (addError) {
           console.error(`Failed to add ${network.name}:`, addError);
           toast.error(`Failed to add ${network.name} network.`);
-          return;
         }
       } else {
         console.error(`Failed to switch to ${network.name}:`, switchError);
         toast.error(`Failed to switch network.`);
-        return;
       }
     }
-    setSelectedNetwork(network);
   };
 
   const handlePay = async () => {
-    if (!walletAddress) return toast.error("Connect your wallet first.");
+    if (!walletAddress) {
+      toast.error("Connect your wallet first.");
+      return;
+    }
+
+    if (!window.ethereum) {
+      toast.error("MetaMask is not available.");
+      return;
+    }
+
     const totalAmount = cart.reduce((acc, item) => acc + item.price, 0);
 
     try {
-      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-
-      // Check if we're on the selected network
-      if (currentChainId !== selectedNetwork.chainId) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: selectedNetwork.chainId }],
-          });
-        } catch (switchError) {
-          if (switchError.code === 4902) {
-            await window.ethereum.request({
-              method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: selectedNetwork.chainId,
-                chainName: selectedNetwork.name,
-                rpcUrls: selectedNetwork.rpcUrls,
-                nativeCurrency: { 
-                  name: selectedNetwork.name, 
-                  symbol: selectedNetwork.symbol, 
-                  decimals: 18 
-                },
-                blockExplorerUrls: selectedNetwork.blockExplorerUrls
-              }],
-            });
-          } else {
-            console.error("Network switch failed", switchError);
-            toast.error(`Failed to switch to ${selectedNetwork.name}.`);
-            return;
-          }
-        }
+      // Get current network
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      
+      if (!network || !network.chainId) {
+        toast.error("Unable to detect current network");
+        return;
       }
 
-      // Ethers.js signer
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const currentChainId = `0x${network.chainId.toString(16)}`;
+
+      // Get signer for current network
       const signer = await provider.getSigner();
 
-      // Send payments to individual NFT creators
+      // Process all transactions in sequence
       for (const item of cart) {
         if (!item.creator) {
           console.warn(`Creator address missing for item: ${item.name}`);
@@ -217,33 +260,55 @@ export default function App() {
           // Wait for transaction confirmation
           const receipt = await transaction.wait();
           console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+
+          // Save transaction details to localStorage for dashboard
+          const transactionDetails = {
+            hash: transaction.hash,
+            network: currentChainId,
+            item: item,
+            timestamp: new Date().toISOString()
+          };
+
+          const addressKey = walletAddress.toLowerCase();
+          
+          // Save transaction
+          const allTransactions = JSON.parse(localStorage.getItem("transactions")) || {};
+          const userTransactions = allTransactions[addressKey] || [];
+          userTransactions.push(transactionDetails);
+          allTransactions[addressKey] = userTransactions;
+          localStorage.setItem("transactions", JSON.stringify(allTransactions));
+
+          // Save purchased NFT
+          const allPurchasedNFTs = JSON.parse(localStorage.getItem("purchasedNFTs")) || {};
+          const userPurchasedNFTs = allPurchasedNFTs[addressKey] || [];
+          
+          // Add network info to the NFT
+          const purchasedNFT = {
+            ...item,
+            network: currentChainId,
+            purchaseDate: new Date().toISOString(),
+            transactionHash: transaction.hash
+          };
+          
+          // Check if NFT already exists to avoid duplicates
+          if (!userPurchasedNFTs.some(nft => nft.id === item.id && nft.network === currentChainId)) {
+            userPurchasedNFTs.push(purchasedNFT);
+            allPurchasedNFTs[addressKey] = userPurchasedNFTs;
+            localStorage.setItem("purchasedNFTs", JSON.stringify(allPurchasedNFTs));
+          }
         } catch (itemError) {
           console.error(`Error processing item ${item.name}:`, itemError);
           toast.error(`Failed to process payment for ${item.name}`);
-          continue;
+          throw itemError;
         }
       }
 
-      // Post-payment cleanup
-      const addressKey = walletAddress.toLowerCase();
-      const allPurchases = JSON.parse(localStorage.getItem("purchasedPics")) || {};
-      const previous = allPurchases[addressKey] || [];
-      const updated = [...previous, ...cart];
-
-      const unique = updated.filter(
-        (pic, index, self) =>
-          index === self.findIndex((p) => p.id === pic.id)
-      );
-
-      allPurchases[addressKey] = unique;
-      localStorage.setItem("purchasedPics", JSON.stringify(allPurchases));
-
+      // Clear cart after successful payment
       setCart([]);
       setShowCart(false);
-
-      toast.success("NFTs Purchased Successfully");
+      toast.success("Payment successful!");
     } catch (err) {
-      console.error("handlePay Error:", err);
+      console.error("Payment error:", err);
       toast.error("Transaction Failed: " + (err.message || "Unknown error"));
     }
   };

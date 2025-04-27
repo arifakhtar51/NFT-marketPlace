@@ -15,7 +15,6 @@ export default function MintNFTPage({ walletAddress, onBack, onAddMintedPic }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
-  const [network, setNetwork] = useState("sepolia");
   const [validationErrors, setValidationErrors] = useState({});
 
   const validateInputs = () => {
@@ -134,38 +133,81 @@ export default function MintNFTPage({ walletAddress, onBack, onAddMintedPic }) {
   
       const metadataResult = await metadataRes.json();
       const tokenUri = `https://gateway.pinata.cloud/ipfs/${metadataResult.IpfsHash}`;
-  
-      // Switch to Sepolia network
-      try {
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: "0xaa36a7" }],
-        });
-      } catch (switchError) {
-        if (switchError.code === 4902) {
-          await window.ethereum.request({
-            method: "wallet_addEthereumChain",
-            params: [{
-              chainId: "0xaa36a7",
-              chainName: "Ethereum Sepolia Testnet",
-              rpcUrls: ["https://eth-sepolia.g.alchemy.com/v2/EH0YqqZKDFerFHCBkSo4a15uusnCGdpx"],
-              nativeCurrency: {
-                name: "Sepolia ETH",
-                symbol: "ETH",
-                decimals: 18,
-              },
-              blockExplorerUrls: ["https://sepolia.etherscan.io"],
-            }],
-          });
+
+      // Get current network for display
+      let provider = new ethers.BrowserProvider(window.ethereum);
+      let network = await provider.getNetwork();
+      let chainId = network.chainId.toString();
+      const currentNetworkName = config.NETWORK_NAMES[chainId] || `Network ${chainId}`;
+
+      // Always use Sepolia for minting
+      const sepoliaChainId = "11155111";
+      const sepoliaContractAddress = config.CONTRACT_ADDRESSES[sepoliaChainId];
+
+      // If not on Sepolia, switch networks
+      if (chainId !== sepoliaChainId) {
+        const switchToSepolia = window.confirm(
+          `NFTs are minted on Sepolia network. You are currently on ${currentNetworkName}. Would you like to switch to Sepolia?`
+        );
+        
+        if (switchToSepolia) {
+          try {
+            await window.ethereum.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: "0xaa36a7" }], // Sepolia chain ID
+            });
+            
+            // Wait for network switch to complete
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Refresh provider and network after switch
+            provider = new ethers.BrowserProvider(window.ethereum);
+            network = await provider.getNetwork();
+            chainId = network.chainId.toString();
+            
+            if (chainId !== sepoliaChainId) {
+              throw new Error("Failed to switch to Sepolia network");
+            }
+          } catch (switchError) {
+            if (switchError.code === 4902) {
+              await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [{
+                  chainId: "0xaa36a7",
+                  chainName: "Ethereum Sepolia Testnet",
+                  rpcUrls: ["https://eth-sepolia.g.alchemy.com/v2/EH0YqqZKDFerFHCBkSo4a15uusnCGdpx"],
+                  nativeCurrency: {
+                    name: "Sepolia ETH",
+                    symbol: "ETH",
+                    decimals: 18,
+                  },
+                  blockExplorerUrls: ["https://sepolia.etherscan.io"],
+                }],
+              });
+              
+              // Wait for network switch to complete
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Refresh provider and network after switch
+              provider = new ethers.BrowserProvider(window.ethereum);
+              network = await provider.getNetwork();
+              chainId = network.chainId.toString();
+              
+              if (chainId !== sepoliaChainId) {
+                throw new Error("Failed to switch to Sepolia network");
+              }
+            } else {
+              throw new Error(`Failed to switch to Sepolia network: ${switchError.message}`);
+            }
+          }
         } else {
-          throw new Error("Failed to switch to Sepolia network");
+          throw new Error("Minting requires Sepolia network. Please switch to Sepolia to continue.");
         }
       }
 
-      // Connect to contract
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      // Connect to contract on Sepolia
       const signer = await provider.getSigner();
-      const contract = new ethers.Contract(config.SEPOLIA_CONTRACT_ADDRESS, config.ABI, signer);
+      const contract = new ethers.Contract(sepoliaContractAddress, config.ABI, signer);
 
       // Check if tokenURI is already minted
       try {
@@ -248,10 +290,7 @@ export default function MintNFTPage({ walletAddress, onBack, onAddMintedPic }) {
       onAddMintedPic(nftDetails);
     } catch (err) {
       console.error("Minting error:", err);
-      toast.error(
-        err.message || "Minting failed. Please check the console for details.",
-        { id: "mint" }
-      );
+      toast.error(err.message || "Failed to mint NFT");
     } finally {
       setMinting(false);
     }
@@ -335,14 +374,6 @@ export default function MintNFTPage({ walletAddress, onBack, onAddMintedPic }) {
       {previewUrl && (
         <img src={previewUrl} alt="Preview" className="w-full mb-4 rounded" />
       )}
-
-      <select 
-        className="w-full mb-4 px-4 py-2 border rounded"
-        value={network}
-        onChange={(e) => setNetwork(e.target.value)}
-      >
-        <option value="sepolia">Ethereum Sepolia</option>
-      </select>
 
       <div className="flex justify-between">
         <button

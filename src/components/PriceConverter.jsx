@@ -1,29 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { ethers } from 'ethers';
 
-const SUPPORTED_NETWORKS = [
-  {
+const SUPPORTED_NETWORKS = {
+  "0x1": {
     name: 'Ethereum',
-    chainId: '0x1',
     symbol: 'ETH',
     rpcUrls: ['https://mainnet.infura.io/v3/your-project-id'],
     blockExplorerUrls: ['https://etherscan.io']
   },
-  {
+  "0xaa36a7": {
     name: 'Sepolia',
-    chainId: '0xaa36a7',
     symbol: 'ETH',
     rpcUrls: ['https://sepolia.infura.io/v3/your-project-id'],
     blockExplorerUrls: ['https://sepolia.etherscan.io']
   },
-  {
+  "0x72": {
     name: 'Flare Testnet Coston2',
-    chainId: '0x72',
     symbol: 'C2FLR',
     rpcUrls: ['https://coston2-api.flare.network/ext/bc/C/rpc'],
     blockExplorerUrls: ['https://coston2-explorer.flare.network']
   }
-];
+};
 
 const SUPPORTED_TOKENS = [
   { 
@@ -56,13 +54,64 @@ const SUPPORTED_TOKENS = [
   }
 ];
 
-const PriceConverter = ({ ethPrice, onNetworkChange }) => {
+const PriceConverter = ({ ethPrice }) => {
   const [selectedToken, setSelectedToken] = useState(SUPPORTED_TOKENS[1]); // Default to ETH
-  const [selectedNetwork, setSelectedNetwork] = useState(SUPPORTED_NETWORKS[1]); // Default to Sepolia
+  const [currentNetwork, setCurrentNetwork] = useState({
+    name: 'Flare Testnet Coston2',
+    symbol: 'C2FLR'
+  }); // Initialize with default Flare network
   const [prices, setPrices] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [convertedPrice, setConvertedPrice] = useState(null);
+
+  // Get current network from MetaMask
+  useEffect(() => {
+    const getNetwork = async () => {
+      if (!window.ethereum) {
+        console.warn('MetaMask is not installed');
+        return;
+      }
+
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const network = await provider.getNetwork();
+        
+        if (!network || !network.chainId) {
+          console.warn('Network information not available');
+          return;
+        }
+
+        const chainId = `0x${network.chainId.toString(16)}`;
+        const networkInfo = SUPPORTED_NETWORKS[chainId];
+        
+        if (networkInfo) {
+          setCurrentNetwork(networkInfo);
+        } else {
+          console.warn(`Unsupported network detected: ${chainId}`);
+          // Keep the default Flare network if unsupported network is detected
+        }
+      } catch (err) {
+        console.error('Error getting network:', err);
+        // Keep the default Flare network on error
+      }
+    };
+
+    getNetwork();
+
+    // Listen for network changes
+    if (window.ethereum) {
+      window.ethereum.on('chainChanged', () => {
+        getNetwork();
+      });
+    }
+
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('chainChanged', getNetwork);
+      }
+    };
+  }, []);
 
   const fetchPrices = async () => {
     try {
@@ -115,39 +164,21 @@ const PriceConverter = ({ ethPrice, onNetworkChange }) => {
   }, []);
 
   useEffect(() => {
-    if (ethPrice && prices[selectedToken.symbol]) {
+    if (ethPrice && prices[selectedToken.symbol] && currentNetwork) {
       const ethUsdPrice = parseFloat(prices['ETH/USD']);
       const selectedTokenUsdPrice = parseFloat(prices[selectedToken.symbol]);
       const convertedValue = (ethPrice * ethUsdPrice) / selectedTokenUsdPrice;
       setConvertedPrice(convertedValue.toFixed(6));
     }
-  }, [ethPrice, selectedToken, prices]);
-
-  const handleNetworkChange = (network) => {
-    setSelectedNetwork(network);
-    if (onNetworkChange) {
-      onNetworkChange(network);
-    }
-  };
+  }, [ethPrice, selectedToken, prices, currentNetwork]);
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Price in {selectedToken.name}</h3>
-        <select
-          value={selectedNetwork.name}
-          onChange={(e) => {
-            const network = SUPPORTED_NETWORKS.find(n => n.name === e.target.value);
-            handleNetworkChange(network);
-          }}
-          className="border rounded-md px-2 py-1"
-        >
-          {SUPPORTED_NETWORKS.map(network => (
-            <option key={network.chainId} value={network.name}>
-              {network.name}
-            </option>
-          ))}
-        </select>
+        <span className="text-sm text-gray-500">
+          {currentNetwork ? `Current Network: ${currentNetwork.name}` : 'Loading network...'}
+        </span>
       </div>
 
       {loading ? (
@@ -159,7 +190,7 @@ const PriceConverter = ({ ethPrice, onNetworkChange }) => {
       ) : (
         <div className="text-center">
           <p className="text-2xl font-bold">
-            {convertedPrice ? `${convertedPrice} ${selectedNetwork.symbol}` : 'Loading...'}
+            {convertedPrice ? `${convertedPrice} ${currentNetwork?.symbol || 'ETH'}` : 'Loading...'}
           </p>
           <p className="text-sm text-gray-500 mt-1">
             Original price: {ethPrice} ETH

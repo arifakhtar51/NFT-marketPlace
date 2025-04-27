@@ -1,8 +1,22 @@
 // config.js
 const config = {
-    // The contract's address on the Ethereum network
-    SEPOLIA_CONTRACT_ADDRESS: "0xc9D44f0F772E9c7BB23fBDF222aA3E6Cd6759b15",
-    BNB_CONTRACT_ADDRESS: "0xeD9279915853cF66CfB22B2ab53Bd244e03c6a61",
+    // Contract addresses mapped by chain ID
+    CONTRACT_ADDRESSES: {
+        "11155111": "0xc9D44f0F772E9c7BB23fBDF222aA3E6Cd6759b15", // Sepolia
+        "97": "0xeD9279915853cF66CfB22B2ab53Bd244e03c6a61", // BNB Testnet
+        "114": "0x0000000000000000000000000000000000000000", // Flare Testnet (placeholder address)
+        "80001": "0x0000000000000000000000000000000000000000", // Mumbai Testnet (placeholder address)
+        "5": "0x0000000000000000000000000000000000000000", // Goerli Testnet (placeholder address)
+    },
+
+    // Network names for display
+    NETWORK_NAMES: {
+        "11155111": "Sepolia",
+        "114": "Flare",
+        "97": "BNB",
+        "80001": "Mumbai",
+        "5": "Goerli"
+    },
   
     // The ABI for the contract
     ABI: [
