@@ -20,6 +20,66 @@ const SUPPORTED_NETWORKS = {
     symbol: 'C2FLR',
     rpcUrls: ['https://coston2-api.flare.network/ext/bc/C/rpc'],
     blockExplorerUrls: ['https://coston2-explorer.flare.network']
+  },
+  "0x89": {
+    name: 'Polygon',
+    symbol: 'MATIC',
+    rpcUrls: ['https://polygon-rpc.com'],
+    blockExplorerUrls: ['https://polygonscan.com']
+  },
+  "0x44d": {
+    name: 'Polygon zkEVM',
+    symbol: 'ETH',
+    rpcUrls: ['https://zkevm-rpc.com'],
+    blockExplorerUrls: ['https://zkevm.polygonscan.com']
+  },
+  "0x14a34": {
+    name: 'Polygon zkEVM',
+    symbol: 'ETH',
+    rpcUrls: ['https://zkevm-rpc.com'],
+    blockExplorerUrls: ['https://zkevm.polygonscan.com']
+  },
+  "0x13881": {
+    name: 'Mumbai',
+    symbol: 'MATIC',
+    rpcUrls: ['https://rpc-mumbai.maticvigil.com'],
+    blockExplorerUrls: ['https://mumbai.polygonscan.com']
+  },
+  "0x13882": {
+    name: 'Mumbai',
+    symbol: 'MATIC',
+    rpcUrls: ['https://rpc-mumbai.maticvigil.com'],
+    blockExplorerUrls: ['https://mumbai.polygonscan.com']
+  },
+  "0x38": {
+    name: 'BNB Smart Chain',
+    symbol: 'BNB',
+    rpcUrls: ['https://bsc-dataseed.binance.org'],
+    blockExplorerUrls: ['https://bscscan.com']
+  },
+  "0xa86a": {
+    name: 'Avalanche',
+    symbol: 'AVAX',
+    rpcUrls: ['https://api.avax.network/ext/bc/C/rpc'],
+    blockExplorerUrls: ['https://snowtrace.io']
+  },
+  "0xa": {
+    name: 'Optimism',
+    symbol: 'ETH',
+    rpcUrls: ['https://mainnet.optimism.io'],
+    blockExplorerUrls: ['https://optimistic.etherscan.io']
+  },
+  "0xa4b1": {
+    name: 'Arbitrum',
+    symbol: 'ETH',
+    rpcUrls: ['https://arb1.arbitrum.io/rpc'],
+    blockExplorerUrls: ['https://arbiscan.io']
+  },
+  "0x8a3": {
+    name: 'Amoy',
+    symbol: 'ETH',
+    rpcUrls: ['https://ethereum-holesky.publicnode.com'],
+    blockExplorerUrls: ['https://amoy.etherscan.io']
   }
 };
 
@@ -51,6 +111,27 @@ const SUPPORTED_TOKENS = [
     icon: '💎', 
     gradient: 'from-purple-500 to-indigo-500',
     iconClass: 'text-purple-600'
+  },
+  { 
+    symbol: 'MATIC/USD', 
+    name: 'Polygon', 
+    icon: '🔷', 
+    gradient: 'from-purple-400 to-indigo-400',
+    iconClass: 'text-indigo-600'
+  },
+  { 
+    symbol: 'BNB/USD', 
+    name: 'BNB', 
+    icon: '🟡', 
+    gradient: 'from-yellow-400 to-yellow-600',
+    iconClass: 'text-yellow-500'
+  },
+  { 
+    symbol: 'AVAX/USD', 
+    name: 'Avalanche', 
+    icon: '❄️', 
+    gradient: 'from-red-400 to-red-600',
+    iconClass: 'text-red-500'
   }
 ];
 
@@ -74,26 +155,89 @@ const PriceConverter = ({ ethPrice }) => {
       }
 
       try {
+        // Get network directly from ethereum provider first
+        const chainIdHex = await window.ethereum.request({ 
+          method: 'eth_chainId'
+        });
+        console.log("Raw chainId from ethereum:", chainIdHex);
+        
+        // Then get network from ethers (as backup)
         const provider = new ethers.BrowserProvider(window.ethereum);
         const network = await provider.getNetwork();
         
         if (!network || !network.chainId) {
-          console.warn('Network information not available');
-          return;
+          console.warn('Network information not available from ethers');
+          // Still continue with chainIdHex from ethereum
+        } else {
+          console.log("Network from ethers:", network);
         }
 
-        const chainId = `0x${network.chainId.toString(16)}`;
-        const networkInfo = SUPPORTED_NETWORKS[chainId];
+        // Use chainIdHex directly if available, otherwise convert from ethers
+        let chainId = chainIdHex || `0x${network.chainId.toString(16)}`;
+        
+        // Ensure chainId is lowercase for consistent comparison
+        chainId = chainId.toLowerCase();
+        
+        console.log("Final chainId being used:", chainId);
+        
+        // Print all supported networks for debugging
+        console.log("Supported networks:", Object.keys(SUPPORTED_NETWORKS));
+        
+        // Create a lowercase version of SUPPORTED_NETWORKS keys for case-insensitive matching
+        const supportedNetworkKeys = {};
+        Object.keys(SUPPORTED_NETWORKS).forEach(key => {
+          supportedNetworkKeys[key.toLowerCase()] = SUPPORTED_NETWORKS[key];
+        });
+        
+        // Try to match with case-insensitive comparison
+        const networkInfo = supportedNetworkKeys[chainId];
+        console.log("Network info found:", networkInfo);
         
         if (networkInfo) {
           setCurrentNetwork(networkInfo);
+
+          // Set token based on network
+          let tokenSymbol;
+          switch (networkInfo.symbol) {
+            case 'MATIC':
+              tokenSymbol = 'MATIC/USD';
+              break;
+            case 'BNB':
+              tokenSymbol = 'BNB/USD';
+              break;
+            case 'AVAX':
+              tokenSymbol = 'AVAX/USD';
+              break;
+            case 'C2FLR':
+              tokenSymbol = 'FLR/USD';
+              break;
+            default:
+              tokenSymbol = 'ETH/USD';
+              break;
+          }
+          
+          const token = SUPPORTED_TOKENS.find(t => t.symbol === tokenSymbol);
+          if (token) {
+            console.log("Setting token to:", token.name);
+            setSelectedToken(token);
+          }
         } else {
-          console.warn(`Unsupported network detected: ${chainId}`);
-          // Keep the default Flare network if unsupported network is detected
+          console.warn(`Unsupported network detected: ${chainId}, name: ${network?.name || 'unknown'}`);
+          // Default to ETH for unsupported networks
+          const ethToken = SUPPORTED_TOKENS.find(t => t.symbol === 'ETH/USD');
+          if (ethToken) setSelectedToken(ethToken);
+          
+          // Set a generic network display with chainId
+          setCurrentNetwork({
+            name: network?.name || `Network ${chainId}`,
+            symbol: 'ETH'
+          });
         }
       } catch (err) {
         console.error('Error getting network:', err);
-        // Keep the default Flare network on error
+        // Default to ETH on error
+        const ethToken = SUPPORTED_TOKENS.find(t => t.symbol === 'ETH/USD');
+        if (ethToken) setSelectedToken(ethToken);
       }
     };
 
@@ -101,7 +245,8 @@ const PriceConverter = ({ ethPrice }) => {
 
     // Listen for network changes
     if (window.ethereum) {
-      window.ethereum.on('chainChanged', () => {
+      window.ethereum.on('chainChanged', (chainId) => {
+        console.log("Chain changed event fired with chainId:", chainId);
         getNetwork();
       });
     }
@@ -175,9 +320,9 @@ const PriceConverter = ({ ethPrice }) => {
   return (
     <div className="bg-white rounded-lg shadow-md p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Price in {selectedToken.name}</h3>
+        <h3 className="text-lg font-semibold">Price in {currentNetwork?.symbol || 'ETH'}</h3>
         <span className="text-sm text-gray-500">
-          {currentNetwork ? `Current Network: ${currentNetwork.name}` : 'Loading network...'}
+          {currentNetwork ? `Network: ${currentNetwork.name}` : 'Loading network...'}
         </span>
       </div>
 

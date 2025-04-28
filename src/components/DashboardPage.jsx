@@ -20,6 +20,43 @@ const DashboardPage = ({ walletAddress }) => {
     return network ? network.name : `Network ${chainId}`;
   };
 
+  const getNetworkSymbol = (chainId) => {
+    const network = Object.values(SUPPORTED_NETWORKS).find(
+      net => net.chainId === chainId
+    );
+    return network ? network.symbol : 'ETH';
+  };
+
+  const getBlockExplorerUrl = (chainId, txHash) => {
+    // Default to Etherscan
+    let baseUrl = 'https://etherscan.io';
+    
+    // Check networks
+    if (chainId === '0xaa36a7') {
+      baseUrl = 'https://sepolia.etherscan.io';
+    } else if (chainId === '0x89') {
+      baseUrl = 'https://polygonscan.com';
+    } else if (chainId === '0x44d' || chainId === '0x14a34') {
+      baseUrl = 'https://zkevm.polygonscan.com';
+    } else if (chainId === '0x13881' || chainId === '0x13882') {
+      baseUrl = 'https://mumbai.polygonscan.com';
+    } else if (chainId === '0x38') {
+      baseUrl = 'https://bscscan.com';
+    } else if (chainId === '0xa86a') {
+      baseUrl = 'https://snowtrace.io';
+    } else if (chainId === '0xa') {
+      baseUrl = 'https://optimistic.etherscan.io';
+    } else if (chainId === '0xa4b1') {
+      baseUrl = 'https://arbiscan.io';
+    } else if (chainId === '0x72') {
+      baseUrl = 'https://coston2-explorer.flare.network';
+    } else if (chainId === '0x8a3') {
+      baseUrl = 'https://amoy.etherscan.io';
+    }
+    
+    return `${baseUrl}/tx/${txHash}`;
+  };
+
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold mb-4">Your Purchased NFTs</h2>
@@ -34,7 +71,9 @@ const DashboardPage = ({ walletAddress }) => {
               />
               <div className="p-2">
                 <p className="font-semibold text-lg">{nft.name || `NFT #${nft.id}`}</p>
-                <p className="text-sm text-gray-600">Price: Ξ {nft.price}</p>
+                <p className="text-sm text-gray-600">
+                  Price: {nft.price} {getNetworkSymbol(nft.network)}
+                </p>
                 <p className="text-sm text-gray-600">
                   Network: {getNetworkName(nft.network)}
                 </p>
@@ -42,7 +81,7 @@ const DashboardPage = ({ walletAddress }) => {
                   Purchased: {new Date(nft.purchaseDate).toLocaleDateString()}
                 </p>
                 <a 
-                  href={`https://${nft.network === '0xaa36a7' ? 'sepolia.' : ''}etherscan.io/tx/${nft.transactionHash}`}
+                  href={getBlockExplorerUrl(nft.network, nft.transactionHash)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-blue-500 hover:underline"
