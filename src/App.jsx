@@ -34,8 +34,23 @@ export default function App() {
         index === self.findIndex((p) => p.src === pic.src)
       );
       const filtered = uniquePics.filter((pic) => pic.price <= 100);
-      localStorage.setItem("mintedPics", JSON.stringify(filtered));
-      setAvailablePics(filtered);
+      
+      // Get all purchased NFTs across all users
+      const allPurchasedNFTs = JSON.parse(localStorage.getItem("purchasedNFTs")) || {};
+      const allPurchasedNFTIds = new Set();
+      
+      // Collect all purchased NFT IDs
+      Object.values(allPurchasedNFTs).forEach(userNFTs => {
+        userNFTs.forEach(nft => {
+          allPurchasedNFTIds.add(nft.id);
+        });
+      });
+      
+      // Filter out any NFTs that have been purchased
+      const availableNFTs = filtered.filter(pic => !allPurchasedNFTIds.has(pic.id));
+      
+      localStorage.setItem("mintedPics", JSON.stringify(availableNFTs));
+      setAvailablePics(availableNFTs);
     }
   }, []);
 
@@ -303,9 +318,20 @@ export default function App() {
         }
       }
 
+      // Save cart items before clearing
+      const purchasedItems = [...cart];
+      
       // Clear cart after successful payment
       setCart([]);
       setShowCart(false);
+      
+      // Remove purchased NFTs from available pics
+      const updatedAvailablePics = availablePics.filter(pic => 
+        !purchasedItems.some(cartItem => cartItem.id === pic.id)
+      );
+      setAvailablePics(updatedAvailablePics);
+      localStorage.setItem("mintedPics", JSON.stringify(updatedAvailablePics));
+      
       toast.success("Payment successful!");
     } catch (err) {
       console.error("Payment error:", err);
@@ -327,6 +353,32 @@ export default function App() {
     setShowMintPage(false);
     setActivePage("gallery");
   };
+
+  // Refresh availablePics when user navigates to gallery
+  useEffect(() => {
+    if (activePage === "gallery") {
+      // Get all purchased NFTs across all users
+      const allPurchasedNFTs = JSON.parse(localStorage.getItem("purchasedNFTs")) || {};
+      const allPurchasedNFTIds = new Set();
+      
+      // Collect all purchased NFT IDs
+      Object.values(allPurchasedNFTs).forEach(userNFTs => {
+        userNFTs.forEach(nft => {
+          allPurchasedNFTIds.add(nft.id);
+        });
+      });
+      
+      // Get stored NFTs
+      const storedPics = JSON.parse(localStorage.getItem("mintedPics")) || [];
+      
+      // Filter out any NFTs that have been purchased
+      const availableNFTs = storedPics.filter(pic => !allPurchasedNFTIds.has(pic.id));
+      
+      // Update state and localStorage
+      setAvailablePics(availableNFTs);
+      localStorage.setItem("mintedPics", JSON.stringify(availableNFTs));
+    }
+  }, [activePage]);
 
   const handleBackFromMint = () => {
     setShowMintPage(false);
